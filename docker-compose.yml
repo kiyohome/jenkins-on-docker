@@ -1,0 +1,80 @@
+version: '2'
+
+services:
+
+  proxy:
+    image: httpd:2.2.34-alpine
+    restart: always
+    environment:
+      TZ: Asia/Tokyo
+      no_proxy: jenkins,gitbucket
+    ports:
+      - "80:80"
+    volumes:
+      - ./httpd.conf:/usr/local/apache2/conf/httpd.conf
+    depends_on:
+      - jenkins
+      - gitbucket
+
+  jenkins:
+    image: jenkins/jenkins:2.70
+    restart: always
+    privileged: true
+    environment:
+      JENKINS_OPTS: --prefix=/jenkins
+      TZ: Asia/Tokyo
+      http_proxy:
+      https_proxy:
+      no_proxy: proxy
+    volumes_from:
+      - jenkins-data
+    depends_on:
+      - jenkins-data
+
+  jenkins-data:
+    image: jenkins/jenkins:2.70
+    command:
+      - "echo"
+      - "data-only container"
+
+  gitbucket:
+    image: f99aq8ove/gitbucket:alpine
+    restart: always
+    environment:
+      GITBUCKET_OPTS: --prefix=/gitbucket
+      GITBUCKET_DB_URL: jdbc:postgresql://gitbucket-db/gitbucket
+      GITBUCKET_DB_USER: gitbucket
+      GITBUCKET_DB_PASSWORD: gitbucket
+      TZ: Asia/Tokyo
+      no_proxy: proxy
+    volumes:
+      - ./wait-for:/gitbucket/wait-for
+    volumes_from:
+      - gitbucket-data
+    depends_on:
+      - gitbucket-data
+      - gitbucket-db
+    command: sh -c '/gitbucket/wait-for gitbucket-db:5432 -- /opt/gitbucket.sh'
+
+  gitbucket-data:
+    image: busybox
+    volumes:
+      - /gitbucket/repositories
+      - /gitbucket/data
+
+  gitbucket-db:
+    image: postgres:9.5.7-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: gitbucket
+      POSTGRES_PASSWORD: gitbucket
+      TZ: Asia/Tokyo
+    volumes_from:
+      - gitbucket-db-data
+    depends_on:
+      - gitbucket-db-data
+
+  gitbucket-db-data:
+    image: busybox
+    volumes:
+      - /var/lib/postgresql/data
